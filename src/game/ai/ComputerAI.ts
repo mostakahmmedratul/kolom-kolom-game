@@ -1,0 +1,186 @@
+import { Pen } from '../model/Pen';
+import { BenchBounds, isPenOutOfBounds } from '../physics/PhysicsEngine';
+import { CollisionHandler } from '../physics/CollisionHandler';
+import { Vector2D } from '../physics/Vector2D';
+
+export type AIDifficultyLevel = 'EASY' | 'MEDIUM' | 'HARD';
+
+export interface AIDifficultyConfig {
+  id: AIDifficultyLevel;
+  name: string;
+  tagline: string;
+  aimVariance: number;
+  maxSpeed: number;
+}
+
+export const AI_DIFFICULTIES: Record<AIDifficultyLevel, AIDifficultyConfig> = {
+  EASY: {
+    id: 'EASY',
+    name: 'School Novice',
+    tagline: 'Casual flicks with occasional slip-ups',
+    aimVariance: 0.26,
+    maxSpeed: 480,
+  },
+  MEDIUM: {
+    id: 'MEDIUM',
+    name: 'Desk Champion',
+    tagline: 'Calculated edge pushes and balanced power',
+    aimVariance: 0.12,
+    maxSpeed: 640,
+  },
+  HARD: {
+    id: 'HARD',
+    name: 'Classroom Legend',
+    tagline: 'Trajectory prediction and ruthless knock-offs',
+    aimVariance: 0.03,
+    maxSpeed: 780,
+  },
+};
+
+export class ComputerAI {
+  static calculateShot(
+    botPen: Pen,
+    humanPen: Pen,
+    bench: BenchBounds,
+    difficulty: AIDifficultyLevel
+  ): Vector2D {
+    if (botPen.outOfBounds || humanPen.outOfBounds) return Vector2D.ZERO;
+
+    const botPos = botPen.position;
+    const humanPos = humanPen.position;
+    const config = AI_DIFFICULTIES[difficulty];
+
+    if (difficulty === 'EASY') {
+      const toHuman = humanPos.subtract(botPos);
+      const dist = Math.max(1, toHuman.length());
+      const baseAngle = Math.atan2(toHuman.y, toHuman.x);
+      const error = (Math.random() * 2 - 1) * config.aimVariance;
+      const finalAngle = baseAngle + error;
+      const speed = Math.max(260, Math.min(config.maxSpeed, dist * 2.2 + 200));
+      return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed);
+    }
+
+    if (difficulty === 'MEDIUM') {
+      const edgeNormal = this.getVectorTowardsNearestEdge(humanPos, bench);
+      const strikePoint = humanPos.subtract(edgeNormal.scale(14));
+      const toTarget = strikePoint.subtract(botPos);
+      const dist = Math.max(1, toTarget.length());
+      const baseAngle = Math.atan2(toTarget.y, toTarget.x);
+      const error = (Math.random() * 2 - 1) * config.aimVariance;
+      const finalAngle = baseAngle + error;
+      const speed = Math.max(300, Math.min(config.maxSpeed, dist * 2.5 + 280));
+      return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed);
+    }
+
+    // HARD: Multi-candidate trajectory search
+    const humanDir = humanPen.getDirection();
+    const halfLen = humanPen.stats.length * 0.4;
+    const targetPoints = [
+      humanPos,
+      humanPos.add(humanDir.scale(halfLen)),
+      humanPos.subtract(humanDir.scale(halfLen)),
+    ];
+
+    let bestShot: Vector2D | null = null;
+    let bestScore = -Infinity;
+
+    for (const target of targetPoints) {
+      const toTarget = target.subtract(botPos);
+      const dist = toTarget.length();
+      if (dist < 1) continue;
+      const baseAngle = Math.atan2(toTarget.y, toTarget.x);
+
+      for (const angleOffset of [-0.07, -0.03, 0, 0.03, 0.07]) {
+        const shotAngle = baseAngle + angleOffset;
+        const dir = new Vector2D(Math.cos(shotAngle), Math.sin(shotAngle));
+
+        for (const powerFrac of [0.7, 0.88, 1.0]) {
+          const speed = Math.max(340, Math.min(config.maxSpeed, dist * 2.8 + 260)) * powerFrac;
+          const candidate = dir.scale(speed);
+          const score = this.evaluateCandidateShot(candidate, botPen, humanPen, bench);
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestShot = candidate;
+          }
+        }
+      }
+    }
+
+    if (!bestShot) {
+      return this.calculateShot(botPen, humanPen, bench, 'MEDIUM');
+    }
+
+    const microError = (Math.random() * 2 - 1) * config.aimVariance;
+    return bestShot.rotate(microError);
+  }
+
+  private static evaluateCandidateShot(
+    impulse: Vector2D,
+    realBot: Pen,
+    realHuman: Pen,
+    bench: BenchBounds
+  ): number {
+    const simBot = new Pen('BOT', 'BOT', realBot.penType, '', '', realBot.position, realBot.angle);
+    const simHuman = new Pen('HUMAN', 'HUMAN', realHuman.penType, '', '', realHuman.position, realHuman.angle);
+
+    simBot.applyDirectImpulse(impulse);
+    const dt = 1 / 60;
+    const steps = 24;
+
+    for (let i = 0; i < steps; i++) {
+      simBot.position = simBot.position.add(simBot.velocity.scale(dt));
+      simBot.velocity = simBot.velocity.scale(0.97);
+
+      simHuman.position = simHuman.position.add(simHuman.velocity.scale(dt));
+      simHuman.velocity = simHuman.velocity.scale(0.97);
+
+      CollisionHandler.resolveCollision(simBot, simHuman);
+
+      if (isPenOutOfBounds(simHuman, bench)) {
+        if (!isPenOutOfBounds(simBot, bench)) {
+          return 1000 - i * 5;
+        }
+      }
+
+      if (isPenOutOfBounds(simBot, bench)) {
+        return -500;
+      }
+    }
+
+    const humanDist = this.getDistanceToNearestEdge(simHuman.position, bench);
+    const botDist = this.getDistanceToNearestEdge(simBot.position, bench);
+    return (220 - humanDist) * 1.5 + botDist * 0.5;
+  }
+
+  private static getVectorTowardsNearestEdge(pos: Vector2D, bench: BenchBounds): Vector2D {
+    const pLeft = bench.x + bench.bevelMargin;
+    const pRight = bench.x + bench.width - bench.bevelMargin;
+    const pTop = bench.y + bench.bevelMargin;
+    const pBottom = bench.y + bench.height - bench.bevelMargin;
+
+    const dLeft = Math.abs(pos.x - pLeft);
+    const dRight = Math.abs(pRight - pos.x);
+    const dTop = Math.abs(pos.y - pTop);
+    const dBottom = Math.abs(pBottom - pos.y);
+
+    const min = Math.min(dLeft, dRight, dTop, dBottom);
+    if (min === dLeft) return new Vector2D(-1, 0);
+    if (min === dRight) return new Vector2D(1, 0);
+    if (min === dTop) return new Vector2D(0, -1);
+    return new Vector2D(0, 1);
+  }
+
+  private static getDistanceToNearestEdge(pos: Vector2D, bench: BenchBounds): number {
+    const pLeft = bench.x + bench.bevelMargin;
+    const pRight = bench.x + bench.width - bench.bevelMargin;
+    const pTop = bench.y + bench.bevelMargin;
+    const pBottom = bench.y + bench.height - bench.bevelMargin;
+
+    const dLeft = Math.abs(pos.x - pLeft);
+    const dRight = Math.abs(pRight - pos.x);
+    const dTop = Math.abs(pos.y - pTop);
+    const dBottom = Math.abs(pBottom - pos.y);
+    return Math.min(dLeft, dRight, dTop, dBottom);
+  }
+}

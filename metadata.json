@@ -1,0 +1,6 @@
+{
+  "name": "Kolom Kolom - Realistic Pen Desktop Game",
+  "description": "Realistic schoolyard bench pen flicking game with custom 2D physics simulation, intelligent AI opponent, and full Java 21 desktop project.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
