@@ -48,7 +48,19 @@ export const PenSelectModal: React.FC<Props> = ({ isOpen, onClose, selectedPen, 
                     {isEquipped && <Check className="w-4 h-4 text-amber-400" />}
                   </div>
                   <div className="text-[11px] font-medium text-amber-300/80 mb-2">{pen.tagline}</div>
-                  <p className="text-xs text-stone-400 leading-relaxed mb-4">{pen.description}</p>
+                  <p className="text-xs text-stone-400 leading-relaxed mb-3">{pen.description}</p>
+
+                  {/* Real-time Color Palette Swatch */}
+                  <div className="flex items-center justify-between mb-3.5 bg-stone-900/90 px-2.5 py-1.5 rounded-lg border border-stone-800">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3.5 h-3.5 rounded-full ring-1 ring-white/20 shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${pen.colors.primary}, ${pen.colors.accent})` }}
+                      />
+                      <span className="text-[11px] font-semibold text-stone-200">{pen.colorName}</span>
+                    </div>
+                    <span className="text-[9px] text-amber-400/90 font-mono uppercase tracking-wider">Live Skin</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-stone-800/80">

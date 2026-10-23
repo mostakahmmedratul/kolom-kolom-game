@@ -2,13 +2,29 @@ import { Pen } from '../model/Pen';
 import { getMomentOfInertia } from '../model/PenStats';
 import { Vector2D } from './Vector2D';
 
+export interface CollisionResult {
+  occurred: boolean;
+  contactPoint: Vector2D | null;
+  hitZoneOnA: 'TIP' | 'CENTER' | 'CAP';
+  hitZoneOnB: 'TIP' | 'CENTER' | 'CAP';
+  relativeSpeed: number;
+}
+
 export class CollisionHandler {
-  static resolveCollision(penA: Pen, penB: Pen): boolean {
-    if (penA.outOfBounds || penB.outOfBounds) return false;
+  static resolveCollision(penA: Pen, penB: Pen): CollisionResult {
+    const noCollision: CollisionResult = {
+      occurred: false,
+      contactPoint: null,
+      hitZoneOnA: 'CENTER',
+      hitZoneOnB: 'CENTER',
+      relativeSpeed: 0,
+    };
+
+    if (penA.outOfBounds || penB.outOfBounds) return noCollision;
 
     const contact = penA.getCollider().testCollision(penB.getCollider());
     if (!contact.colliding || !contact.contactPointA || !contact.contactPointB) {
-      return false;
+      return noCollision;
     }
 
     const normal = contact.normal;
@@ -32,6 +48,17 @@ export class CollisionHandler {
     const rA = contactPoint.subtract(penA.position);
     const rB = contactPoint.subtract(penB.position);
 
+    // Identify which physical zone was struck on each pen
+    const dirA = penA.getDirection();
+    const projA = rA.dot(dirA);
+    const halfLenA = penA.stats.length * 0.5;
+    const hitZoneA = projA > halfLenA * 0.28 ? 'TIP' : projA < -halfLenA * 0.28 ? 'CAP' : 'CENTER';
+
+    const dirB = penB.getDirection();
+    const projB = rB.dot(dirB);
+    const halfLenB = penB.stats.length * 0.5;
+    const hitZoneB = projB > halfLenB * 0.28 ? 'TIP' : projB < -halfLenB * 0.28 ? 'CAP' : 'CENTER';
+
     // Velocities at contact point
     const vPointA = penA.velocity.add(new Vector2D(-penA.angularVelocity * rA.y, penA.angularVelocity * rA.x));
     const vPointB = penB.velocity.add(new Vector2D(-penB.angularVelocity * rB.y, penB.angularVelocity * rB.x));
@@ -40,10 +67,17 @@ export class CollisionHandler {
     const velAlongNormal = vRel.dot(normal);
 
     if (velAlongNormal > 0) {
-      return false; // separating
+      return noCollision; // separating
     }
 
-    const e = (penA.stats.restitution + penB.stats.restitution) * 0.5;
+    // Material restitution based on struck zone (metal tip has higher elastic bounce)
+    let restitutionBonus = 0;
+    if (hitZoneA === 'TIP' || hitZoneB === 'TIP') restitutionBonus += 0.12;
+    if (hitZoneA === 'CAP' || hitZoneB === 'CAP') restitutionBonus += 0.06;
+
+    const baseE = (penA.stats.restitution + penB.stats.restitution) * 0.5;
+    const e = Math.min(0.88, baseE + restitutionBonus);
+
     const invInertiaA = 1 / getMomentOfInertia(penA.stats);
     const invInertiaB = 1 / getMomentOfInertia(penB.stats);
 
@@ -51,11 +85,12 @@ export class CollisionHandler {
     const rBCrossN = rB.cross(normal);
 
     const denom = invMassA + invMassB + rACrossN * rACrossN * invInertiaA + rBCrossN * rBCrossN * invInertiaB;
-    if (denom < 1e-9) return false;
+    if (denom < 1e-9) return noCollision;
 
     const jMag = (-(1 + e) * velAlongNormal) / denom;
     const impulse = normal.scale(jMag);
 
+    // Apply linear & angular impulse
     penA.velocity = penA.velocity.add(impulse.scale(invMassA));
     penA.angularVelocity += rA.cross(impulse) * invInertiaA;
 
@@ -71,7 +106,8 @@ export class CollisionHandler {
 
     if (denomT > 1e-9) {
       let jtMag = -velAlongTangent / denomT;
-      const maxJt = 0.22 * jMag;
+      const frictionCoeff = hitZoneB === 'CENTER' ? 0.28 : 0.18; // rubber grip barrel has more bite
+      const maxJt = frictionCoeff * jMag;
       jtMag = Math.max(-maxJt, Math.min(maxJt, jtMag));
       const frictionImpulse = tangent.scale(jtMag);
 
@@ -82,6 +118,12 @@ export class CollisionHandler {
       penB.angularVelocity -= rB.cross(frictionImpulse) * invInertiaB;
     }
 
-    return true;
+    return {
+      occurred: true,
+      contactPoint,
+      hitZoneOnA: hitZoneA,
+      hitZoneOnB: hitZoneB,
+      relativeSpeed: vRel.length(),
+    };
   }
 }

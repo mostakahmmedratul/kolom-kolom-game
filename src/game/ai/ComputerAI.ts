@@ -37,71 +37,88 @@ export const AI_DIFFICULTIES: Record<AIDifficultyLevel, AIDifficultyConfig> = {
   },
 };
 
+export interface AIShotResult {
+  shot: Vector2D;
+  flickPart: 'TIP' | 'CENTER' | 'CAP';
+}
+
 export class ComputerAI {
   static calculateShot(
     botPen: Pen,
     humanPen: Pen,
     bench: BenchBounds,
     difficulty: AIDifficultyLevel
-  ): Vector2D {
-    if (botPen.outOfBounds || humanPen.outOfBounds) return Vector2D.ZERO;
+  ): AIShotResult {
+    if (botPen.outOfBounds || humanPen.outOfBounds) {
+      return { shot: Vector2D.ZERO, flickPart: 'CENTER' };
+    }
 
     const botPos = botPen.position;
     const humanPos = humanPen.position;
     const config = AI_DIFFICULTIES[difficulty];
 
     if (difficulty === 'EASY') {
+      const flickPart: 'TIP' | 'CENTER' | 'CAP' = Math.random() > 0.5 ? 'TIP' : 'CENTER';
       const toHuman = humanPos.subtract(botPos);
       const dist = Math.max(1, toHuman.length());
       const baseAngle = Math.atan2(toHuman.y, toHuman.x);
       const error = (Math.random() * 2 - 1) * config.aimVariance;
       const finalAngle = baseAngle + error;
       const speed = Math.max(260, Math.min(config.maxSpeed, dist * 2.2 + 200));
-      return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed);
+      return {
+        shot: new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed),
+        flickPart,
+      };
     }
 
     if (difficulty === 'MEDIUM') {
       const edgeNormal = this.getVectorTowardsNearestEdge(humanPos, bench);
-      const strikePoint = humanPos.subtract(edgeNormal.scale(14));
+      const distToHuman = humanPos.distanceTo(botPos);
+
+      // Bot chooses whether to use Tip Spin or Center Push
+      let flickPart: 'TIP' | 'CENTER' | 'CAP' = 'CENTER';
+      if (distToHuman < 220) {
+        flickPart = Math.random() > 0.4 ? 'TIP' : 'CENTER';
+      }
+
+      const strikePoint = humanPos.subtract(edgeNormal.scale(12));
       const toTarget = strikePoint.subtract(botPos);
       const dist = Math.max(1, toTarget.length());
       const baseAngle = Math.atan2(toTarget.y, toTarget.x);
       const error = (Math.random() * 2 - 1) * config.aimVariance;
       const finalAngle = baseAngle + error;
       const speed = Math.max(300, Math.min(config.maxSpeed, dist * 2.5 + 280));
-      return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed);
+
+      return {
+        shot: new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(speed),
+        flickPart,
+      };
     }
 
-    // HARD: Multi-candidate trajectory search
-    const humanDir = humanPen.getDirection();
-    const halfLen = humanPen.stats.length * 0.4;
-    const targetPoints = [
-      humanPos,
-      humanPos.add(humanDir.scale(halfLen)),
-      humanPos.subtract(humanDir.scale(halfLen)),
-    ];
+    // HARD: Evaluates candidate shots across all 3 flick parts of its own pen
+    const candidateParts: Array<'TIP' | 'CENTER' | 'CAP'> = ['CENTER', 'TIP', 'CAP'];
+    const toOpponent = humanPos.subtract(botPos);
+    const baseAngle = Math.atan2(toOpponent.y, toOpponent.x);
+    const dist = toOpponent.length();
 
     let bestShot: Vector2D | null = null;
+    let bestPart: 'TIP' | 'CENTER' | 'CAP' = 'CENTER';
     let bestScore = -Infinity;
 
-    for (const target of targetPoints) {
-      const toTarget = target.subtract(botPos);
-      const dist = toTarget.length();
-      if (dist < 1) continue;
-      const baseAngle = Math.atan2(toTarget.y, toTarget.x);
-
-      for (const angleOffset of [-0.07, -0.03, 0, 0.03, 0.07]) {
+    for (const fPart of candidateParts) {
+      for (const angleOffset of [-0.08, -0.04, 0, 0.04, 0.08]) {
         const shotAngle = baseAngle + angleOffset;
         const dir = new Vector2D(Math.cos(shotAngle), Math.sin(shotAngle));
 
-        for (const powerFrac of [0.7, 0.88, 1.0]) {
+        for (const powerFrac of [0.75, 0.9, 1.0]) {
           const speed = Math.max(340, Math.min(config.maxSpeed, dist * 2.8 + 260)) * powerFrac;
           const candidate = dir.scale(speed);
-          const score = this.evaluateCandidateShot(candidate, botPen, humanPen, bench);
+          const score = this.evaluateCandidateShot(candidate, fPart, botPen, humanPen, bench);
 
           if (score > bestScore) {
             bestScore = score;
             bestShot = candidate;
+            bestPart = fPart;
           }
         }
       }
@@ -112,11 +129,15 @@ export class ComputerAI {
     }
 
     const microError = (Math.random() * 2 - 1) * config.aimVariance;
-    return bestShot.rotate(microError);
+    return {
+      shot: bestShot.rotate(microError),
+      flickPart: bestPart,
+    };
   }
 
   private static evaluateCandidateShot(
     impulse: Vector2D,
+    flickPart: 'TIP' | 'CENTER' | 'CAP',
     realBot: Pen,
     realHuman: Pen,
     bench: BenchBounds
@@ -124,7 +145,7 @@ export class ComputerAI {
     const simBot = new Pen('BOT', 'BOT', realBot.penType, '', '', realBot.position, realBot.angle);
     const simHuman = new Pen('HUMAN', 'HUMAN', realHuman.penType, '', '', realHuman.position, realHuman.angle);
 
-    simBot.applyDirectImpulse(impulse);
+    simBot.applyFlickImpulse(impulse, flickPart);
     const dt = 1 / 60;
     const steps = 24;
 

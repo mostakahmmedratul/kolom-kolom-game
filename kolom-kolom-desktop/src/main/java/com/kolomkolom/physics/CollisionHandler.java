@@ -64,10 +64,20 @@ public final class CollisionHandler {
             return false;
         }
 
-        // Restitution (coefficient of bounciness)
+        // Restitution (coefficient of bounciness) with zone-specific material modifiers
         double restA = penA.getPenType().getStats().restitution();
         double restB = penB.getPenType().getStats().restitution();
-        double e = (restA + restB) * 0.5;
+        double baseE = (restA + restB) * 0.5;
+
+        double projB = rB.dot(penB.getDirection());
+        double halfLenB = penB.getPenType().getStats().length() * 0.5;
+        double zoneBonus = 0.0;
+        if (projB > halfLenB * 0.28) {
+            zoneBonus = 0.12; // metal nib has higher elastic bounce
+        } else if (projB < -halfLenB * 0.28) {
+            zoneBonus = 0.06; // cap has spring clip bounce
+        }
+        double e = Math.min(0.88, baseE + zoneBonus);
 
         // Inertias
         double invInertiaA = 1.0 / penA.getPenType().getStats().momentOfInertia();

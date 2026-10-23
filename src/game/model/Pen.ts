@@ -11,15 +11,23 @@ export class Pen {
   public fallProgress: number;
   public fallComplete: boolean;
 
+  public primaryColor: string;
+  public accentColor: string;
+  public clipColor: string;
+
   constructor(
     public readonly id: 'HUMAN' | 'BOT',
     public readonly name: string,
     public penType: PenTypeId,
-    public readonly primaryColor: string,
-    public readonly accentColor: string,
+    primaryColor: string,
+    accentColor: string,
     initialPos: Vector2D,
-    initialAngle: number
+    initialAngle: number,
+    clipColor: string = '#cbd5e1'
   ) {
+    this.primaryColor = primaryColor;
+    this.accentColor = accentColor;
+    this.clipColor = clipColor;
     this.position = initialPos;
     this.velocity = Vector2D.ZERO;
     this.angle = initialAngle;
@@ -27,6 +35,22 @@ export class Pen {
     this.outOfBounds = false;
     this.fallProgress = 0;
     this.fallComplete = false;
+  }
+
+  setPenType(type: PenTypeId, colors?: { primary: string; accent: string; clip?: string }): void {
+    this.penType = type;
+    if (colors) {
+      this.primaryColor = colors.primary;
+      this.accentColor = colors.accent;
+      if (colors.clip) this.clipColor = colors.clip;
+    } else {
+      const typeData = PEN_TYPES[type];
+      if (typeData && typeData.colors) {
+        this.primaryColor = typeData.colors.primary;
+        this.accentColor = typeData.colors.accent;
+        this.clipColor = typeData.colors.clip;
+      }
+    }
   }
 
   get stats(): PenStats {
@@ -47,6 +71,40 @@ export class Pen {
     if (this.outOfBounds) return;
     const { mass, impulseMultiplier } = this.stats;
     this.velocity = this.velocity.add(impulse.scale(impulseMultiplier / mass));
+  }
+
+  applyFlickImpulse(impulse: Vector2D, flickPart: 'TIP' | 'CENTER' | 'CAP'): void {
+    if (this.outOfBounds) return;
+    const { mass, impulseMultiplier } = this.stats;
+    const inertia = getMomentOfInertia(this.stats);
+
+    // Linear propulsion
+    const linFactor = flickPart === 'CENTER' ? 1.25 : 0.95;
+    this.velocity = this.velocity.add(impulse.scale((impulseMultiplier * linFactor) / mass));
+
+    // Off-center lever arm r along pen axis
+    const dir = this.getDirection();
+    const halfLen = this.stats.length * 0.44;
+
+    let r = Vector2D.ZERO;
+    if (flickPart === 'TIP') {
+      r = dir.scale(halfLen);
+    } else if (flickPart === 'CAP') {
+      r = dir.scale(-halfLen);
+    }
+
+    // Rotational torque: r x impulse
+    let torque = r.cross(impulse);
+
+    // If flicking exactly in-line, apply natural schoolyard finger flick spin
+    if (Math.abs(torque) < 1e-4 && flickPart !== 'CENTER') {
+      const naturalAngle = flickPart === 'TIP' ? 0.35 : -0.35;
+      torque = impulse.length() * halfLen * Math.sin(naturalAngle);
+    }
+
+    // Apply angular velocity proportional to flick power and torque
+    const torqueBoost = 1.7;
+    this.angularVelocity += (torque * torqueBoost) / inertia;
   }
 
   applyImpulseAtPoint(impulse: Vector2D, contactPoint: Vector2D): void {

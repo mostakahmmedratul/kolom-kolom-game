@@ -11,9 +11,9 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<AIDifficultyLevel>('MEDIUM');
   const [targetScore, setTargetScore] = useState<number>(10);
 
-  const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [penSelectOpen, setPenSelectOpen] = useState(false);
   const [difficultySelectOpen, setDifficultySelectOpen] = useState(false);
+  const [javaProjectOpen, setJavaProjectOpen] = useState(false);
 
   return (
     <main className="w-screen h-screen overflow-hidden bg-stone-950 flex flex-col">
@@ -21,9 +21,9 @@ export default function App() {
         selectedPen={selectedPen}
         difficulty={difficulty}
         targetScore={targetScore}
-        onOpenCodeModal={() => setCodeModalOpen(true)}
         onOpenPenSelect={() => setPenSelectOpen(true)}
         onOpenDifficultySelect={() => setDifficultySelectOpen(true)}
+        onOpenJavaProject={() => setJavaProjectOpen(true)}
       />
 
       <PenSelectModal
@@ -43,8 +43,8 @@ export default function App() {
       />
 
       <JavaProjectModal
-        isOpen={codeModalOpen}
-        onClose={() => setCodeModalOpen(false)}
+        isOpen={javaProjectOpen}
+        onClose={() => setJavaProjectOpen(false)}
       />
     </main>
   );

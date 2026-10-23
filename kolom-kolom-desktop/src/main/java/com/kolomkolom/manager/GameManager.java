@@ -255,10 +255,22 @@ public class GameManager implements Runnable, PhysicsEngine.CollisionListener {
         }
     }
 
+    private String selectedFlickPart = "TIP";
+    private String botFlickPart = "CENTER";
+
+    public String getSelectedFlickPart() { return selectedFlickPart; }
+    public void setSelectedFlickPart(String part) { this.selectedFlickPart = part; }
+    public String getBotFlickPart() { return botFlickPart; }
+
     /**
-     * Executes the human player's shot with an impulse vector derived from mouse drag.
+     * Executes the human player's shot with an impulse vector derived from mouse drag,
+     * applying the impulse to the selected flick contact point on the player's pen.
      */
     public synchronized boolean executeHumanShot(Vector2D impulse) {
+        return executeHumanShot(impulse, selectedFlickPart);
+    }
+
+    public synchronized boolean executeHumanShot(Vector2D impulse, String flickPart) {
         if (gameState != GameState.PLAYING || turnState != TurnState.HUMAN_AIMING) {
             return false;
         }
@@ -274,16 +286,18 @@ public class GameManager implements Runnable, PhysicsEngine.CollisionListener {
             clampedImpulse = impulse.normalize().scale(maxPower);
         }
 
-        humanPen.applyDirectImpulse(clampedImpulse);
+        this.selectedFlickPart = flickPart;
+        humanPen.applyFlickImpulse(clampedImpulse, flickPart);
         audioManager.playFlick(Math.min(power / maxPower, 1.0));
         setTurnState(TurnState.HUMAN_RESOLVING);
         return true;
     }
 
     private void executeBotShot() {
-        Vector2D shot = computerAI.calculateShot(computerPen, humanPen, bench, settings.getDifficulty());
-        computerPen.applyDirectImpulse(shot);
-        audioManager.playFlick(Math.min(shot.length() / 800.0, 1.0));
+        ComputerAI.ShotDecision decision = computerAI.decideShot(computerPen, humanPen, bench, settings.getDifficulty());
+        this.botFlickPart = decision.flickPart();
+        computerPen.applyFlickImpulse(decision.impulse(), decision.flickPart());
+        audioManager.playFlick(Math.min(decision.impulse().length() / 800.0, 1.0));
         setTurnState(TurnState.COMPUTER_RESOLVING);
     }
 

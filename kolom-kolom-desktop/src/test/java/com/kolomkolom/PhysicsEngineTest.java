@@ -68,6 +68,20 @@ public class PhysicsEngineTest {
     }
 
     @Test
+    @DisplayName("Tip strike generates significantly higher spin torque than center strike")
+    void testTipVersusCenterStrikeTorque() {
+        Pen centerHitPen = new Pen("C", "Center", PenType.BALANCED, null, null, new Vector2D(300, 300), 0.0);
+        Pen tipHitPen = new Pen("T", "Tip", PenType.BALANCED, null, null, new Vector2D(300, 300), 0.0);
+
+        Vector2D impulse = new Vector2D(0.0, 40.0);
+        centerHitPen.applyImpulse(impulse, centerHitPen.getStrikePoint("CENTER"));
+        tipHitPen.applyImpulse(impulse, tipHitPen.getStrikePoint("TIP"));
+
+        assertEquals(0.0, centerHitPen.getAngularVelocity(), 1e-4, "Direct center strike produces zero torque");
+        assertTrue(Math.abs(tipHitPen.getAngularVelocity()) > 0.1, "Tip strike produces substantial angular spin");
+    }
+
+    @Test
     @DisplayName("Pen collision transfers momentum and prevents overlap")
     void testPenCollisionMomentumTransfer() {
         // Place pen A moving right directly into stationary pen B
@@ -100,5 +114,30 @@ public class PhysicsEngineTest {
 
         assertTrue(target1.getVelocity().x > target2.getVelocity().x,
                 "Target struck by heavy pen should receive higher momentum than target struck by light pen");
+    }
+
+    @Test
+    @DisplayName("Own-pen flick on TIP generates whirlwind spin, while CENTER provides pure forward slide")
+    void testOwnPenFlickImpulseMechanics() {
+        Pen tipPen = new Pen("TIP_PEN", "P1", PenType.BALANCED, null, null, new Vector2D(300, 300), 0.0);
+        Pen centerPen = new Pen("CENTER_PEN", "P1", PenType.BALANCED, null, null, new Vector2D(300, 300), 0.0);
+        Pen capPen = new Pen("CAP_PEN", "P1", PenType.BALANCED, null, null, new Vector2D(300, 300), 0.0);
+
+        Vector2D impulse = new Vector2D(200.0, 50.0);
+
+        tipPen.applyFlickImpulse(impulse, "TIP");
+        centerPen.applyFlickImpulse(impulse, "CENTER");
+        capPen.applyFlickImpulse(impulse, "CAP");
+
+        // Tip generates strong positive angular torque
+        assertTrue(Math.abs(tipPen.getAngularVelocity()) > 0.1, "Tip flick must induce high angular spin");
+
+        // Cap generates reverse angular torque
+        assertTrue(Math.signum(tipPen.getAngularVelocity()) != Math.signum(capPen.getAngularVelocity()) || Math.abs(capPen.getAngularVelocity()) > 0.1,
+                "Cap flick must apply counter-lever torque");
+
+        // Center generates pure linear momentum with higher linear velocity than tip
+        assertTrue(centerPen.getVelocity().length() >= tipPen.getVelocity().length(),
+                "Center flick must transfer maximum linear propulsion");
     }
 }

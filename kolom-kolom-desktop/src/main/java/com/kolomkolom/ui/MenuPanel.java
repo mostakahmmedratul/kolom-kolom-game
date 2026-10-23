@@ -2,14 +2,17 @@ package com.kolomkolom.ui;
 
 import com.kolomkolom.ai.AIDifficulty;
 import com.kolomkolom.manager.GameManager;
-import com.kolomkolom.model.GameState;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.RoundRectangle2D;
 
 /**
- * Main menu screen presenting game start, pen customization,
- * difficulty toggle, target score setting, and exit options.
+ * Modern, stylish main menu screen for the Kolom Kolom desktop game.
+ * Features dark carbon aesthetics, warm gold branding, interactive buttons,
+ * and developer accreditation for Ratul Ahmed.
  */
 public class MenuPanel extends JPanel {
     private final GameManager gameManager;
@@ -19,7 +22,7 @@ public class MenuPanel extends JPanel {
         this.gameManager = gameManager;
         this.gameWindow = gameWindow;
         setLayout(new GridBagLayout());
-        setBackground(new Color(28, 22, 18));
+        setBackground(new Color(20, 16, 13));
 
         buildUI();
     }
@@ -27,42 +30,53 @@ public class MenuPanel extends JPanel {
     private void buildUI() {
         removeAll();
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.insets = new Insets(8, 12, 8, 12);
         gbc.gridx = 0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        // Title Lockup
+        // Title Lockup with Gold/Amber Glow
         JLabel titleLabel = new JLabel("KOLOM KOLOM", SwingConstants.CENTER);
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 52));
-        titleLabel.setForeground(new Color(245, 195, 130));
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 54));
+        titleLabel.setForeground(new Color(251, 191, 36));
         gbc.gridy = 0;
-        gbc.insets = new Insets(20, 10, 4, 10);
+        gbc.insets = new Insets(16, 12, 2, 12);
         add(titleLabel, gbc);
 
-        JLabel subtitleLabel = new JLabel("Authentic Schoolyard Desk Pen Flicking Game", SwingConstants.CENTER);
-        subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 16));
-        subtitleLabel.setForeground(new Color(190, 165, 140));
+        JLabel subtitleLabel = new JLabel("Authentic Schoolyard Wooden Desk Pen Duel", SwingConstants.CENTER);
+        subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 15));
+        subtitleLabel.setForeground(new Color(210, 185, 160));
         gbc.gridy = 1;
-        gbc.insets = new Insets(0, 10, 30, 10);
+        gbc.insets = new Insets(0, 12, 12, 12);
         add(subtitleLabel, gbc);
 
-        // Buttons
-        gbc.insets = new Insets(8, 10, 8, 10);
+        // Developer Tag Banner
+        JPanel devBanner = new JPanel();
+        devBanner.setOpaque(false);
+        JLabel devLabel = new JLabel("★ Lead Developer: Ratul Ahmed · ratul101ahmed@gmail.com ★", SwingConstants.CENTER);
+        devLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        devLabel.setForeground(new Color(245, 158, 11));
+        devBanner.add(devLabel);
+        gbc.gridy = 2;
+        gbc.insets = new Insets(0, 12, 22, 12);
+        add(devBanner, gbc);
 
-        JButton playBtn = createStyledButton("PLAY MATCH", new Color(40, 140, 70));
+        // Main Menu Action Buttons
+        gbc.insets = new Insets(6, 12, 6, 12);
+
+        JButton playBtn = createModernButton("⚡ PLAY MATCH", new Color(16, 185, 129), new Color(5, 150, 105));
         playBtn.addActionListener(e -> {
             gameManager.startNewMatch();
             gameWindow.showCard("GAME");
         });
-        gbc.gridy = 2;
+        gbc.gridy = 3;
         add(playBtn, gbc);
 
-        JButton penBtn = createStyledButton("PEN SELECTION (" + gameManager.getSettings().getSelectedPenType().getDisplayName() + ")", new Color(45, 95, 180));
+        JButton penBtn = createModernButton("✒ PEN SELECTION (" + gameManager.getSettings().getSelectedPenType().getDisplayName() + ")", new Color(37, 99, 235), new Color(29, 78, 216));
         penBtn.addActionListener(e -> gameWindow.showCard("PEN_SELECT"));
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         add(penBtn, gbc);
 
-        JButton diffBtn = createStyledButton("DIFFICULTY: " + gameManager.getSettings().getDifficulty().name(), new Color(130, 75, 180));
+        JButton diffBtn = createModernButton("🎯 AI DIFFICULTY: " + gameManager.getSettings().getDifficulty().name(), new Color(147, 51, 234), new Color(126, 34, 206));
         diffBtn.addActionListener(e -> {
             AIDifficulty next = switch (gameManager.getSettings().getDifficulty()) {
                 case EASY -> AIDifficulty.MEDIUM;
@@ -70,43 +84,88 @@ public class MenuPanel extends JPanel {
                 case HARD -> AIDifficulty.EASY;
             };
             gameManager.getSettings().setDifficulty(next);
-            diffBtn.setText("DIFFICULTY: " + next.name() + " (" + next.getTitle() + ")");
+            diffBtn.setText("🎯 AI DIFFICULTY: " + next.name() + " (" + next.getTitle() + ")");
         });
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         add(diffBtn, gbc);
 
-        JButton targetBtn = createStyledButton("TARGET SCORE: " + gameManager.getSettings().getTargetScore() + " POINTS", new Color(175, 105, 35));
+        JButton targetBtn = createModernButton("🏆 TARGET SCORE: " + gameManager.getSettings().getTargetScore() + " POINTS", new Color(217, 119, 6), new Color(180, 83, 9));
         targetBtn.addActionListener(e -> {
             int next = gameManager.getSettings().getTargetScore() == 10 ? 15 : 10;
             gameManager.getSettings().setTargetScore(next);
-            targetBtn.setText("TARGET SCORE: " + next + " POINTS");
-        });
-        gbc.gridy = 5;
-        add(targetBtn, gbc);
-
-        JButton muteBtn = createStyledButton("SOUND: " + (gameManager.getSettings().isMuted() ? "MUTED" : "ON"), new Color(90, 95, 105));
-        muteBtn.addActionListener(e -> {
-            boolean muted = !gameManager.getSettings().isMuted();
-            gameManager.getSettings().setMuted(muted);
-            muteBtn.setText("SOUND: " + (muted ? "MUTED" : "ON"));
+            targetBtn.setText("🏆 TARGET SCORE: " + next + " POINTS");
         });
         gbc.gridy = 6;
-        add(muteBtn, gbc);
+        add(targetBtn, gbc);
 
-        JButton quitBtn = createStyledButton("QUIT GAME", new Color(75, 30, 30));
-        quitBtn.addActionListener(e -> System.exit(0));
+        JButton guideBtn = createModernButton("ℹ DEVELOPER INFO & PHYSICS GUIDE", new Color(75, 85, 99), new Color(55, 65, 81));
+        guideBtn.addActionListener(e -> showDeveloperDialog());
         gbc.gridy = 7;
+        add(guideBtn, gbc);
+
+        JButton quitBtn = createModernButton("✕ EXIT TO DESKTOP", new Color(153, 27, 27), new Color(127, 29, 29));
+        quitBtn.addActionListener(e -> System.exit(0));
+        gbc.gridy = 8;
         add(quitBtn, gbc);
     }
 
-    private JButton createStyledButton(String text, Color bg) {
-        JButton btn = new JButton(text);
-        btn.setFont(new Font("SansSerif", Font.BOLD, 15));
+    private void showDeveloperDialog() {
+        JOptionPane.showMessageDialog(this,
+                "★ KOLOM KOLOM — REALISTIC PEN DESKTOP GAME ★\n\n" +
+                "Lead Game Developer: Ratul Ahmed\n" +
+                "Contact: ratul101ahmed@gmail.com\n\n" +
+                "Physics Dynamics & Own-Pen Flicking:\n" +
+                "• Choose which part of your own pen to flick:\n" +
+                "  - Tip (Front Nib): Produces off-center lever torque, causing rapid whirlwind spin.\n" +
+                "  - Center (Body): Delivers pure linear force for laser-straight slides.\n" +
+                "  - Cap (Back Clip): Launches with reverse whip spin.\n\n" +
+                "• Knock the computer opponent off the wooden bench to score 1 point!\n" +
+                "• First to reach the target score wins the match.",
+                "Developer Accreditation & Game Guide",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private JButton createModernButton(String text, Color baseColor, Color hoverColor) {
+        JButton btn = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                boolean isHover = getModel().isRollover();
+
+                g2.setColor(isHover ? hoverColor : baseColor);
+                g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 14, 14));
+
+                g2.setColor(new Color(255, 255, 255, isHover ? 60 : 30));
+                g2.setStroke(new BasicStroke(1.2f));
+                g2.draw(new RoundRectangle2D.Double(0, 0, getWidth() - 1, getHeight() - 1, 14, 14));
+
+                FontMetrics fm = g2.getFontMetrics();
+                int x = (getWidth() - fm.stringWidth(getText())) / 2;
+                int y = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
+                g2.setColor(Color.WHITE);
+                g2.setFont(getFont());
+                g2.drawString(getText(), x, y);
+
+                g2.dispose();
+            }
+        };
+
+        btn.setFont(new Font("SansSerif", Font.BOLD, 14));
         btn.setForeground(Color.WHITE);
-        btn.setBackground(bg);
+        btn.setPreferredSize(new Dimension(380, 44));
+        btn.setContentAreaFilled(false);
+        btn.setBorderPainted(false);
         btn.setFocusPainted(false);
-        btn.setBorder(BorderFactory.createEmptyBorder(12, 28, 12, 28));
         btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) { btn.repaint(); }
+            @Override
+            public void mouseExited(MouseEvent e) { btn.repaint(); }
+        });
+
         return btn;
     }
 }

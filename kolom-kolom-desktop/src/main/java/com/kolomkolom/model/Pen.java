@@ -11,8 +11,9 @@ import java.awt.Color;
 public class Pen {
     private final String id;
     private final String ownerName;
-    private final Color primaryColor;
-    private final Color accentColor;
+    private Color primaryColor;
+    private Color accentColor;
+    private Color clipColor;
     private PenType penType;
 
     // Rigid body state
@@ -28,11 +29,17 @@ public class Pen {
 
     public Pen(String id, String ownerName, PenType penType, Color primaryColor, Color accentColor,
                Vector2D initialPosition, double initialAngle) {
+        this(id, ownerName, penType, primaryColor, accentColor, null, initialPosition, initialAngle);
+    }
+
+    public Pen(String id, String ownerName, PenType penType, Color primaryColor, Color accentColor,
+               Color clipColor, Vector2D initialPosition, double initialAngle) {
         this.id = id;
         this.ownerName = ownerName;
         this.penType = penType;
         this.primaryColor = primaryColor;
         this.accentColor = accentColor;
+        this.clipColor = clipColor != null ? clipColor : (penType != null ? penType.getClipColor() : accentColor);
         this.position = initialPosition;
         this.angle = initialAngle;
         this.velocity = Vector2D.ZERO;
@@ -95,6 +102,72 @@ public class Pen {
     }
 
     /**
+     * Computes world coordinate for a designated strike zone (TIP, CENTER, CAP).
+     */
+    public Vector2D getStrikePoint(String zone) {
+        Vector2D dir = getDirection();
+        double halfLen = penType.getStats().length() * 0.5;
+        if ("TIP".equalsIgnoreCase(zone)) {
+            return position.add(dir.scale(halfLen * 0.88));
+        } else if ("CAP".equalsIgnoreCase(zone)) {
+            return position.subtract(dir.scale(halfLen * 0.82));
+        }
+        return position;
+    }
+
+    /**
+     * Computes the world coordinate for the flick contact point on this pen's body.
+     */
+    public Vector2D getFlickPoint(String part) {
+        Vector2D dir = getDirection();
+        double halfLen = penType.getStats().length() * 0.44;
+        if ("TIP".equalsIgnoreCase(part)) {
+            return position.add(dir.scale(halfLen));
+        } else if ("CAP".equalsIgnoreCase(part)) {
+            return position.subtract(dir.scale(halfLen));
+        }
+        return position;
+    }
+
+    /**
+     * Applies a flick impulse to this pen at the chosen contact point (TIP, CENTER, CAP).
+     * Creates linear propulsion plus rotational spin torque proportional to off-center lever arm.
+     */
+    public void applyFlickImpulse(Vector2D impulse, String flickPart) {
+        if (outOfBounds) return;
+        double mass = penType.getStats().mass();
+        double mult = penType.getStats().impulseMultiplier();
+        double inertia = penType.getStats().momentOfInertia();
+
+        // Linear propulsion
+        double linFactor = "CENTER".equalsIgnoreCase(flickPart) ? 1.25 : 0.95;
+        this.velocity = this.velocity.add(impulse.scale((mult * linFactor) / mass));
+
+        // Off-center lever arm r along pen axis
+        Vector2D dir = getDirection();
+        double halfLen = penType.getStats().length() * 0.44;
+
+        Vector2D r = Vector2D.ZERO;
+        if ("TIP".equalsIgnoreCase(flickPart)) {
+            r = dir.scale(halfLen);
+        } else if ("CAP".equalsIgnoreCase(flickPart)) {
+            r = dir.scale(-halfLen);
+        }
+
+        // 2D torque: r x impulse
+        double torque = r.cross(impulse);
+
+        // If flicked exactly inline, apply natural schoolyard finger snap spin
+        if (Math.abs(torque) < 1e-4 && !"CENTER".equalsIgnoreCase(flickPart)) {
+            double naturalAngle = "TIP".equalsIgnoreCase(flickPart) ? 0.35 : -0.35;
+            torque = impulse.length() * halfLen * Math.sin(naturalAngle);
+        }
+
+        double torqueBoost = 1.7;
+        this.angularVelocity += (torque * torqueBoost) / inertia;
+    }
+
+    /**
      * Constructs the oriented CapsuleCollider matching this pen's current position and rotation.
      */
     public CapsuleCollider getCollider() {
@@ -138,9 +211,17 @@ public class Pen {
     public String getId() { return id; }
     public String getOwnerName() { return ownerName; }
     public PenType getPenType() { return penType; }
-    public void setPenType(PenType penType) { this.penType = penType; }
+    public void setPenType(PenType penType) {
+        this.penType = penType;
+        if (penType != null) {
+            this.primaryColor = penType.getPrimaryColor();
+            this.accentColor = penType.getAccentColor();
+            this.clipColor = penType.getClipColor();
+        }
+    }
     public Color getPrimaryColor() { return primaryColor; }
     public Color getAccentColor() { return accentColor; }
+    public Color getClipColor() { return clipColor != null ? clipColor : accentColor; }
     public Vector2D getPosition() { return position; }
     public void setPosition(Vector2D position) { this.position = position; }
     public Vector2D getVelocity() { return velocity; }

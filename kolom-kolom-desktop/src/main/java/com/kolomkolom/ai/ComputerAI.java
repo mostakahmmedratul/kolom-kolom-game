@@ -14,26 +14,35 @@ import java.util.Random;
 public class ComputerAI {
     private final Random random = new Random();
 
+    public record ShotDecision(Vector2D impulse, String flickPart) {}
+
     /**
      * Calculates the impulse vector the computer should apply to its pen.
      */
     public Vector2D calculateShot(Pen botPen, Pen humanPen, Bench bench, AIDifficulty difficulty) {
+        return decideShot(botPen, humanPen, bench, difficulty).impulse();
+    }
+
+    /**
+     * Calculates the strategic impulse vector AND the contact flick part on its own pen.
+     */
+    public ShotDecision decideShot(Pen botPen, Pen humanPen, Bench bench, AIDifficulty difficulty) {
         if (botPen.isOutOfBounds() || humanPen.isOutOfBounds()) {
-            return Vector2D.ZERO;
+            return new ShotDecision(Vector2D.ZERO, "CENTER");
         }
 
         Vector2D botPos = botPen.getPosition();
         Vector2D humanPos = humanPen.getPosition();
 
         return switch (difficulty) {
-            case EASY -> calculateEasyShot(botPos, humanPos, difficulty);
-            case MEDIUM -> calculateMediumShot(botPos, humanPos, humanPen, bench, difficulty);
-            case HARD -> calculateHardShot(botPen, humanPen, bench, difficulty);
+            case EASY -> calculateEasyDecision(botPos, humanPos, difficulty);
+            case MEDIUM -> calculateMediumDecision(botPos, humanPos, humanPen, bench, difficulty);
+            case HARD -> calculateHardDecision(botPen, humanPen, bench, difficulty);
         };
     }
 
-    private Vector2D calculateEasyShot(Vector2D botPos, Vector2D humanPos, AIDifficulty difficulty) {
-        // Simple direct line with notable human-like angle inaccuracy
+    private ShotDecision calculateEasyDecision(Vector2D botPos, Vector2D humanPos, AIDifficulty difficulty) {
+        String flickPart = random.nextBoolean() ? "TIP" : "CENTER";
         Vector2D toHuman = humanPos.subtract(botPos);
         double dist = toHuman.length();
         if (dist < 1.0) dist = 1.0;
@@ -42,16 +51,19 @@ public class ComputerAI {
         double error = (random.nextDouble() * 2.0 - 1.0) * difficulty.getAimErrorVariance();
         double finalAngle = baseAngle + error;
 
-        // Moderate power scaled with distance
         double power = Math.clamp(dist * 2.2 + 200.0, 250.0, difficulty.getMaxSpeed());
-        return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(power);
+        return new ShotDecision(new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(power), flickPart);
     }
 
-    private Vector2D calculateMediumShot(Vector2D botPos, Vector2D humanPos, Pen humanPen, Bench bench, AIDifficulty difficulty) {
-        // Find closest edge for opponent
+    private ShotDecision calculateMediumDecision(Vector2D botPos, Vector2D humanPos, Pen humanPen, Bench bench, AIDifficulty difficulty) {
         Vector2D closestEdgeNormal = getVectorTowardsNearestEdge(humanPos, bench);
+        double distToHuman = humanPos.distanceTo(botPos);
 
-        // Aim slightly behind the human pen to knock them in the direction of the closest edge
+        String flickPart = "CENTER";
+        if (distToHuman < 220.0) {
+            flickPart = random.nextDouble() > 0.4 ? "TIP" : "CENTER";
+        }
+
         Vector2D idealStrikePoint = humanPos.subtract(closestEdgeNormal.scale(12.0));
         Vector2D toTarget = idealStrikePoint.subtract(botPos);
         double dist = toTarget.length();
@@ -61,36 +73,24 @@ public class ComputerAI {
         double finalAngle = baseAngle + error;
 
         double power = Math.clamp(dist * 2.5 + 280.0, 320.0, difficulty.getMaxSpeed());
-        return new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(power);
+        return new ShotDecision(new Vector2D(Math.cos(finalAngle), Math.sin(finalAngle)).scale(power), flickPart);
     }
 
-    private Vector2D calculateHardShot(Pen botPen, Pen humanPen, Bench bench, AIDifficulty difficulty) {
-        // Multi-candidate trajectory simulation
+    private ShotDecision calculateHardDecision(Pen botPen, Pen humanPen, Bench bench, AIDifficulty difficulty) {
         Vector2D botPos = botPen.getPosition();
         Vector2D humanPos = humanPen.getPosition();
+        Vector2D toOpponent = humanPos.subtract(botPos);
+        double dist = toOpponent.length();
+        double baseAngle = Math.atan2(toOpponent.y, toOpponent.x);
 
-        // 3 target points on human pen: Center, Tip, Base
-        Vector2D humanDir = humanPen.getDirection();
-        double halfLen = humanPen.getPenType().getStats().length() * 0.4;
-        Vector2D[] targets = new Vector2D[] {
-                humanPos,
-                humanPos.add(humanDir.scale(halfLen)),
-                humanPos.subtract(humanDir.scale(halfLen))
-        };
-
+        String[] candidateParts = new String[] { "CENTER", "TIP", "CAP" };
         Vector2D bestShot = null;
+        String bestPart = "CENTER";
         double bestScore = Double.NEGATIVE_INFINITY;
 
-        double[] powerFractions = { 0.65, 0.85, 1.0 };
+        double[] powerFractions = { 0.75, 0.9, 1.0 };
 
-        for (Vector2D target : targets) {
-            Vector2D toTarget = target.subtract(botPos);
-            double dist = toTarget.length();
-            if (dist < 1.0) continue;
-            Vector2D dir = toTarget.normalize();
-            double baseAngle = Math.atan2(dir.y, dir.x);
-
-            // Sweep small angle offsets around line of sight
+        for (String fPart : candidateParts) {
             for (double angleOffset : new double[] { -0.08, -0.04, 0.0, 0.04, 0.08 }) {
                 double shotAngle = baseAngle + angleOffset;
                 Vector2D shotDir = new Vector2D(Math.cos(shotAngle), Math.sin(shotAngle));
@@ -99,22 +99,55 @@ public class ComputerAI {
                     double speed = Math.clamp(dist * 2.8 + 260.0, 350.0, difficulty.getMaxSpeed()) * pFrac;
                     Vector2D candidateImpulse = shotDir.scale(speed);
 
-                    double score = evaluateCandidateShot(candidateImpulse, botPen, humanPen, bench);
+                    double score = evaluateCandidateShot(candidateImpulse, fPart, botPen, humanPen, bench);
                     if (score > bestScore) {
                         bestScore = score;
                         bestShot = candidateImpulse;
+                        bestPart = fPart;
                     }
                 }
             }
         }
 
         if (bestShot == null) {
-            return calculateMediumShot(botPos, humanPos, humanPen, bench, difficulty);
+            return calculateMediumDecision(botPos, humanPos, humanPen, bench, difficulty);
         }
 
-        // Tiny realistic jitter even on hard
         double tinyJitter = (random.nextDouble() * 2.0 - 1.0) * difficulty.getAimErrorVariance();
-        return bestShot.rotate(tinyJitter);
+        return new ShotDecision(bestShot.rotate(tinyJitter), bestPart);
+    }
+
+    private double evaluateCandidateShot(Vector2D impulse, String flickPart, Pen realBot, Pen realHuman, Bench bench) {
+        Pen simBot = new Pen("BOT", "BOT", realBot.getPenType(), null, null, realBot.getPosition(), realBot.getAngle());
+        Pen simHuman = new Pen("HUMAN", "HUMAN", realHuman.getPenType(), null, null, realHuman.getPosition(), realHuman.getAngle());
+
+        simBot.applyFlickImpulse(impulse, flickPart);
+        double dt = 1.0 / 60.0;
+        int steps = 24;
+
+        for (int i = 0; i < steps; i++) {
+            simBot.setPosition(simBot.getPosition().add(simBot.getVelocity().scale(dt)));
+            simBot.setVelocity(simBot.getVelocity().scale(0.97));
+
+            simHuman.setPosition(simHuman.getPosition().add(simHuman.getVelocity().scale(dt)));
+            simHuman.setVelocity(simHuman.getVelocity().scale(0.97));
+
+            CollisionHandler.resolveCollision(simBot, simHuman);
+
+            if (bench.isPenOutOfBounds(simHuman)) {
+                if (!bench.isPenOutOfBounds(simBot)) {
+                    return 1000.0 - i * 5.0;
+                }
+            }
+
+            if (bench.isPenOutOfBounds(simBot)) {
+                return -500.0;
+            }
+        }
+
+        double humanDist = getDistanceToNearestEdge(simHuman.getPosition(), bench);
+        double botDist = getDistanceToNearestEdge(simBot.getPosition(), bench);
+        return (220.0 - humanDist) * 1.5 + botDist * 0.5;
     }
 
     /**

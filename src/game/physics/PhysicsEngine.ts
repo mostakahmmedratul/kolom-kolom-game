@@ -37,7 +37,13 @@ export class PhysicsEngine {
   public static readonly SUB_STEPS = 4;
 
   constructor(
-    public onCollision?: (penA: Pen, penB: Pen, relSpeed: number) => void,
+    public onCollision?: (
+      penA: Pen,
+      penB: Pen,
+      relSpeed: number,
+      hitZoneB: 'TIP' | 'CENTER' | 'CAP',
+      contactPoint: Vector2D | null
+    ) => void,
     public onOutOfBounds?: (pen: Pen) => void
   ) {}
 
@@ -88,10 +94,9 @@ export class PhysicsEngine {
           const p1 = pens[i];
           const p2 = pens[j];
           if (!p1.outOfBounds && !p2.outOfBounds) {
-            const relSpeed = p1.velocity.subtract(p2.velocity).length();
-            const hit = CollisionHandler.resolveCollision(p1, p2);
-            if (hit) {
-              this.onCollision?.(p1, p2, relSpeed);
+            const result = CollisionHandler.resolveCollision(p1, p2);
+            if (result.occurred) {
+              this.onCollision?.(p1, p2, result.relativeSpeed, result.hitZoneOnB, result.contactPoint);
             }
           }
         }

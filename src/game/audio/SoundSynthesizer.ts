@@ -45,7 +45,7 @@ export class SoundSynthesizer {
     }
   }
 
-  playImpact(relativeSpeed: number): void {
+  playImpact(relativeSpeed: number, hitZone: 'TIP' | 'CENTER' | 'CAP' = 'CENTER'): void {
     const ctx = this.getContext();
     if (!ctx) return;
 
@@ -55,13 +55,36 @@ export class SoundSynthesizer {
       const gain = ctx.createGain();
 
       const norm = Math.min(1, Math.max(0.2, relativeSpeed / 500));
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(860, now);
-      osc.frequency.exponentialRampToValueAtTime(240, now + 0.06);
+      
+      // Localized frequencies
+      let startFreq = 860;
+      let endFreq = 240;
+      let oscType: OscillatorType = 'sine';
 
-      const amp = this.volume * norm * 0.6;
+      if (hitZone === 'TIP') {
+        // High-pitched metallic ballpoint nib ping
+        startFreq = 1250;
+        endFreq = 480;
+        oscType = 'triangle';
+      } else if (hitZone === 'CENTER') {
+        // Deep solid resin body thud
+        startFreq = 620;
+        endFreq = 160;
+        oscType = 'sine';
+      } else if (hitZone === 'CAP') {
+        // Whipping snappy cap & clip twang
+        startFreq = 950;
+        endFreq = 280;
+        oscType = 'sawtooth';
+      }
+
+      osc.type = oscType;
+      osc.frequency.setValueAtTime(startFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.065);
+
+      const amp = this.volume * norm * 0.65;
       gain.gain.setValueAtTime(amp, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
 
       // Add high-pass click noise
       const bufferSize = ctx.sampleRate * 0.04;
@@ -82,7 +105,7 @@ export class SoundSynthesizer {
       noiseGain.connect(ctx.destination);
 
       osc.start(now);
-      osc.stop(now + 0.06);
+      osc.stop(now + 0.065);
       noise.start(now);
     } catch {
       // Audio autoplay policy catch
